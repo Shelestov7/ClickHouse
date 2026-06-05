@@ -79,15 +79,15 @@ AllocationTrace CurrentMemoryTracker::allocImpl(Int64 size, bool enforce_memory_
         Int64 new_untracked_memory = current_thread->untracked_memory.add(size);
         if (new_untracked_memory > current_thread->untracked_memory_limit)
         {
-            current_thread->untracked_memory.store(0);
-
             try
             {
-                return memory_tracker->allocImpl(new_untracked_memory, enforce_memory_limit);
+                auto result = memory_tracker->allocImpl(new_untracked_memory, enforce_memory_limit);
+                current_thread->untracked_memory.store(0);
+                return result;
             }
             catch (...)
             {
-                current_thread->untracked_memory.add(new_untracked_memory - size);
+                current_thread->untracked_memory.add(-size);
                 throw;
             }
         }
