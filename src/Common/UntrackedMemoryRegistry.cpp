@@ -18,10 +18,7 @@ UntrackedMemoryCounter::~UntrackedMemoryCounter()
 
 UntrackedMemoryRegistry & UntrackedMemoryRegistry::instance()
 {
-    /// Intentional leak to defensively avoid the scenario
-    /// where the main thread finishes, destructing static objects,
-    /// without joining the threads that may still use this method.
-    static UntrackedMemoryRegistry & registry = *new UntrackedMemoryRegistry;
+    static UntrackedMemoryRegistry registry;
     return registry;
 }
 

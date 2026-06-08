@@ -495,6 +495,13 @@ void LocalServer::cleanup()
             global_context.reset();
         }
 
+        {
+            Stopwatch watch;
+            LOG_INFO(&logger(), "Waiting for background threads");
+            GlobalThreadPool::instance().shutdown();
+            LOG_INFO(&logger(), "Background threads finished in {} ms", watch.elapsedMilliseconds());
+        }
+
         /// thread status should be destructed before shared context because it relies on process list.
 
         status.reset();

@@ -32,6 +32,9 @@
 #include <Utils.h>
 #include <Server/CloudPlacementInfo.h>
 #include <IO/SharedThreadPools.h>
+#include <Common/ThreadPool.h>
+#include <Common/Stopwatch.h>
+#include <Common/scope_guard_safe.h>
 
 #include <Poco/FileChannel.h>
 
@@ -590,6 +593,14 @@ DisksApp::~DisksApp()
     client.reset(nullptr);
     if (global_context)
         global_context->shutdown();
+
+    {
+        Stopwatch watch;
+        auto log = getLogger("DisksApp");
+        LOG_INFO(log, "Waiting for background threads");
+        GlobalThreadPool::instance().shutdown();
+        LOG_INFO(log, "Background threads finished in {} ms", watch.elapsedMilliseconds());
+    }
 
     try
     {

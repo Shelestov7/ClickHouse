@@ -22,6 +22,9 @@
 #include <Compression/CompressionFactory.h>
 #include <Common/TerminalSize.h>
 #include <Common/ThreadPool.h>
+#include <Common/scope_guard_safe.h>
+#include <Common/Stopwatch.h>
+#include <Common/logger_useful.h>
 #include <Common/CurrentMetrics.h>
 #include <Core/Defines.h>
 
@@ -76,6 +79,15 @@ int mainEntryClickHouseCompressor(int argc, char ** argv)
     namespace po = boost::program_options;
 
     bool print_stacktrace = false;
+
+    SCOPE_EXIT_SAFE({
+        Stopwatch watch;
+        auto log = getLogger("Compressor");
+        LOG_INFO(log, "Waiting for background threads");
+        GlobalThreadPool::instance().shutdown();
+        LOG_INFO(log, "Background threads finished in {} ms", watch.elapsedMilliseconds());
+    });
+
     try
     {
         po::options_description desc = createOptionsDescription("Allowed options", getTerminalWidth());
