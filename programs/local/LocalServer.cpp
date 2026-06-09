@@ -498,7 +498,7 @@ void LocalServer::cleanup()
         {
             Stopwatch watch;
             LOG_INFO(&logger(), "Waiting for background threads");
-            GlobalThreadPool::instance().shutdown();
+            GlobalThreadPool::shutdown();
             LOG_INFO(&logger(), "Background threads finished in {} ms", watch.elapsedMilliseconds());
         }
 

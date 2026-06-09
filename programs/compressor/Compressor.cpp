@@ -84,7 +84,7 @@ int mainEntryClickHouseCompressor(int argc, char ** argv)
         Stopwatch watch;
         auto log = getLogger("Compressor");
         LOG_INFO(log, "Waiting for background threads");
-        GlobalThreadPool::instance().shutdown();
+        GlobalThreadPool::shutdown();
         LOG_INFO(log, "Background threads finished in {} ms", watch.elapsedMilliseconds());
     });
 

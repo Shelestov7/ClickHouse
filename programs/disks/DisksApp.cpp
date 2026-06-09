@@ -598,7 +598,7 @@ DisksApp::~DisksApp()
         Stopwatch watch;
         auto log = getLogger("DisksApp");
         LOG_INFO(log, "Waiting for background threads");
-        GlobalThreadPool::instance().shutdown();
+        GlobalThreadPool::shutdown();
         LOG_INFO(log, "Background threads finished in {} ms", watch.elapsedMilliseconds());
     }
 
