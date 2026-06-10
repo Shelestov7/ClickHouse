@@ -5,8 +5,6 @@
 #include <Common/TerminalSize.h>
 #include <Common/ThreadPool.h>
 #include <Common/scope_guard_safe.h>
-#include <Common/Stopwatch.h>
-#include <Common/logger_useful.h>
 #include <Core/Types.h>
 #include <boost/program_options/variables_map.hpp>
 
@@ -34,12 +32,10 @@ int mainEntryClickHouseKeeperBench(int argc, char ** argv)
     //Poco::Logger::root().setChannel(channel);
     //Poco::Logger::root().setLevel("trace");
 
+    /// Join global-pool threads before the statics they may have accessed are destroyed.
+    /// That way, accesses happen-before destruction.
     SCOPE_EXIT_SAFE({
-        Stopwatch watch;
-        auto log = getLogger("KeeperBench");
-        LOG_INFO(log, "Waiting for background threads");
         GlobalThreadPool::shutdown();
-        LOG_INFO(log, "Background threads finished in {} ms", watch.elapsedMilliseconds());
     });
 
     try

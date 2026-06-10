@@ -13,7 +13,6 @@
 #include <Common/Stopwatch.h>
 #include <Common/ThreadPool.h>
 #include <Common/scope_guard_safe.h>
-#include <Common/logger_useful.h>
 #include <AggregateFunctions/ReservoirSampler.h>
 #include <AggregateFunctions/registerAggregateFunctions.h>
 #include <Client/ClientBaseHelpers.h>
@@ -900,12 +899,10 @@ int mainEntryClickHouseBenchmark(int argc, char ** argv)
     using namespace DB;
     bool print_stacktrace = false;
 
+    /// Join global-pool threads before the statics they may have accessed are destroyed.
+    /// That way, accesses happen-before destruction.
     SCOPE_EXIT_SAFE({
-        Stopwatch watch;
-        auto log = getLogger("Benchmark");
-        LOG_INFO(log, "Waiting for background threads");
         GlobalThreadPool::shutdown();
-        LOG_INFO(log, "Background threads finished in {} ms", watch.elapsedMilliseconds());
     });
 
     try
