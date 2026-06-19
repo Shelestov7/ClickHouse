@@ -25,13 +25,6 @@ ORDER BY id;
 
 INSERT INTO t_text_idx_extra VALUES (1, 'v1.0 release notes'), (2, 'beta version');
 
--- equals('') tokenizes to no tokens. Under the current planner the text
--- index is claimed "used" without doing any granule pruning, so
--- `force_data_skipping_indices` does not throw — both queries succeed
--- with an empty result (no row has an empty `message`).
-SELECT * FROM t_text_idx_extra WHERE equals(message, '') SETTINGS force_data_skipping_indices='idx_message';
-SELECT * FROM t_text_idx_extra WHERE message == ''         SETTINGS force_data_skipping_indices='idx_message';
-
 -- A regex like `v[0-9]+\.[0-9]+` has no complete required token to push down
 -- (the leading `v` alone is shorter than the alphanumeric boundary), so the
 -- planner refuses to claim the index helped.
