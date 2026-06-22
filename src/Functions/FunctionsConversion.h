@@ -3605,12 +3605,35 @@ public:
     size_t getNumberOfArguments() const override { return 0; }
 
     bool useDefaultImplementationForConstants() const override { return true; }
+    bool useDefaultImplementationForNulls() const override { return false; }
     bool canBeExecutedOnDefaultArguments() const override { return false; }
 
     ColumnNumbers getArgumentsThatAreAlwaysConstant() const override { return {1}; }
 
     DataTypePtr getReturnTypeImpl(const ColumnsWithTypeAndName & arguments) const override
     {
+        // Handle Nullable first argument by recursing with the inner type and wrapping the result.
+        if (!arguments.empty() && arguments[0].type->isNullable())
+        {
+            ColumnsWithTypeAndName inner_args = arguments;
+            inner_args[0].type = assert_cast<const DataTypeNullable &>(*arguments[0].type).getNestedType();
+            inner_args[0].column = nullptr;
+            DataTypePtr inner = getReturnTypeImpl(inner_args);
+            if (inner->isNullable())
+                return inner;
+            return std::make_shared<DataTypeNullable>(std::move(inner));
+        }
+        if (!arguments.empty() && arguments[0].type->onlyNull())
+        {
+            ColumnsWithTypeAndName dummy_args = arguments;
+            dummy_args[0].type = std::make_shared<DataTypeString>();
+            dummy_args[0].column = nullptr;
+            DataTypePtr inner = getReturnTypeImpl(dummy_args);
+            if (inner->isNullable())
+                return inner;
+            return std::make_shared<DataTypeNullable>(std::move(inner));
+        }
+
         DataTypePtr res;
 
         if (isDateTime64<Name, ToDataType>(arguments) || isTime64<Name, ToDataType>(arguments))
@@ -3728,6 +3751,65 @@ public:
 
     ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
+        // Handle nullable or null-literal first argument: never feed null-masked rows to the
+        // parser because toString() writes empty strings at those positions since PR #105587.
+        if (!arguments.empty())
+        {
+            if (arguments[0].column && arguments[0].column->onlyNull())
+                return result_type->createColumnConstWithDefaultValue(input_rows_count)->convertToFullColumnIfConst();
+
+            if (arguments[0].type->isNullable())
+            {
+                const auto & nullable_col = assert_cast<const ColumnNullable &>(*arguments[0].column);
+                const auto & null_map_data = nullable_col.getNullMapData();
+
+                ColumnsWithTypeAndName inner_args = arguments;
+                inner_args[0].column = nullable_col.getNestedColumnPtr();
+                inner_args[0].type = assert_cast<const DataTypeNullable &>(*arguments[0].type).getNestedType();
+
+                const size_t rows_with_nulls = countBytesInFilter(null_map_data.data(), 0, input_rows_count);
+                auto inner_result_type = removeNullable(result_type);
+
+                ColumnPtr inner_result;
+                if (rows_with_nulls > 0)
+                {
+                    if (rows_with_nulls == input_rows_count)
+                        return result_type->createColumnConstWithDefaultValue(input_rows_count)->convertToFullColumnIfConst();
+
+                    IColumn::Filter filter(input_rows_count);
+                    for (size_t i = 0; i < input_rows_count; ++i)
+                        filter[i] = !null_map_data[i];
+                    const size_t rows_without_nulls = input_rows_count - rows_with_nulls;
+
+                    ColumnsWithTypeAndName filtered_args = inner_args;
+                    for (auto & arg : filtered_args)
+                        arg.column = arg.column->filter(filter, rows_without_nulls);
+
+                    inner_result = executeImpl(filtered_args, inner_result_type, rows_without_nulls);
+                    auto mutable_result = IColumn::mutate(std::move(inner_result));
+                    mutable_result->expand(filter, false);
+                    inner_result = std::move(mutable_result);
+                }
+                else
+                {
+                    inner_result = executeImpl(inner_args, inner_result_type, input_rows_count);
+                }
+
+                // For OrNull mode the inner result is itself Nullable; merge the two null maps.
+                if (const auto * inner_nullable = checkAndGetColumn<ColumnNullable>(inner_result.get()))
+                {
+                    auto merged = IColumn::mutate(nullable_col.getNullMapColumnPtr());
+                    auto & merged_data = assert_cast<ColumnUInt8 &>(*merged).getData();
+                    const auto & inner_null_data = inner_nullable->getNullMapData();
+                    for (size_t i = 0; i < input_rows_count; ++i)
+                        merged_data[i] |= inner_null_data[i];
+                    return ColumnNullable::create(inner_nullable->getNestedColumnPtr(), std::move(merged));
+                }
+
+                return ColumnNullable::create(std::move(inner_result), nullable_col.getNullMapColumnPtr());
+            }
+        }
+
         ColumnPtr result_column;
 
         if constexpr (to_decimal)
